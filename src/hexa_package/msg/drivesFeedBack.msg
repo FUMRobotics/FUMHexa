@@ -1,0 +1,4 @@
+int32 actualPosition0
+int32 actualPosition1
+int16 actualCurrent0
+int16 actualCurrent1

@@ -1,0 +1,2 @@
+int16 current0
+int16 current1

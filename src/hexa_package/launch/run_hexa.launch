@@ -1,0 +1,14 @@
+<launch>
+
+
+    <node pkg="hexa_package" type="sensor.py" name="sensor" output="screen" launch-prefix=""> </node>
+
+    <node pkg="hexa_package" type="hexa_node4" name="hexa_node4" output="screen" launch-prefix=""></node>
+ 
+    <!-- <node pkg="hexa_package" type="websocket.py" name="websocket" output="screen" launch-prefix=""> </node> -->
+
+    <!-- <node pkg="hexa_package" type="control.py" name="control" output="screen" launch-prefix=""> </node> -->
+
+</launch>
+
+

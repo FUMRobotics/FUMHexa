@@ -1,0 +1,6 @@
+string left_leg_algorithm
+string right_leg_algorithm
+int32 left_assistive_force
+int32 right_assistive_force
+int32 left_assistive_time
+int32 right_assistive_time

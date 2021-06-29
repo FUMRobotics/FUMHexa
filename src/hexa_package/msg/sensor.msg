@@ -1,0 +1,2 @@
+int32 loadcell0
+int32 loadcell1
