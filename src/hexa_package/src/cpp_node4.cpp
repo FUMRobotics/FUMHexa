@@ -20,7 +20,7 @@
 #include "kacanopen/ros_bridge/entry_subscriber.h"
 #include "kacanopen/ros_bridge/joint_state_publisher.h"
 #include "kacanopen/ros_bridge/joint_state_subscriber.h"
-
+#include <cmath>
 #include "hexa_package/drivesFeedBack.h"
 #include "hexa_package/drivesAction.h"
 #include "hexa_package/sensor.h"
@@ -275,6 +275,8 @@ int32_t Assist_Delay = 0;
 string control_algorithm = "assist_as_needed";
 string control_algorithm_right = "zero_impedance";
 string control_algorithm_left = "zero_impedance";
+long double delta_theta = 0.5;
+long double epsilon = 0.05;
 
 void getSensorData(const hexa_package::sensor::ConstPtr &msg) {
     //cout  << endl << msg->loadcell1 << endl;
@@ -701,6 +703,7 @@ void control() {
     CurrentActualValueright = actual_curr_1;
     static long double CurrentActualValueleft = actual_curr_0;
     CurrentActualValueleft = actual_curr_0;
+    static bool activate_assist = false;
 
 
     static long double Zero_Impedance_Gain = 1;
@@ -716,7 +719,7 @@ void control() {
     static long double C_L = 1.5;
     static long double FK_L = 1.5;
     static long double MgL_L = 0.5;
-    static long double PID_Gain_L = 0.15;
+    static long double PID_Gain_L = 0.5;
     static long double N_LH = 100;
 
     //# initial value
@@ -936,86 +939,50 @@ void control() {
     if (control_algorithm == "time_based_assist") {
         // Time based assist for right leg
         if (control_algorithm_right == "assist_as_needed") {
-            if (timer_r > timer_right) {
-                R_o = 0;
-            } else if (timer_delay >= delay_time && R_i == 0) {
-                R_o = 1;
-                R_i = 1;
-                L_i = 0;
-                timer_delay = 0;
+            cout << Theta_LH - Theta_RH << endl;
+            if ((Theta_LH - Theta_RH) > delta_theta) {
+                if (abs(Velocity_RH) < epsilon && abs(Velocity_LH) < epsilon) {
+                    activate_assist = true;
+                }
             }
-
-            if (timer_l > timer_left) {
-                L_o = 0;
-            } else if (SUM_Vel_L >= 0.1 && SUM_Vel_R <= 0.0 && L_i == 0) {
-                L_o = 1;
-                R_i = 0;
-                L_i = 1;
+            if (activate_assist) {
+                timer_delay++;
+                if (timer_delay >= delay_time) {
+                    R_Assist_Delay = -Assist_Delay;
+                    timer_r++;
+                }
+                if ((Theta_LH - Theta_RH) < -delta_theta || timer_r > timer_right) {
+                    R_Assist_Delay = 0;
+                    activate_assist = false;
+                    timer_r = 0;
+                    timer_delay = 0;
+                }
             }
-
-
-            if (L_i == 1) {
-                timer_delay = timer_delay + 1;
-            }
-
-            if (R_o == 1) {
-                timer_r = timer_r + 1;
-                R_Assist_Delay = -Assist_Delay;
-            } else if (R_o == 0) {
-                timer_r = 0;
-                R_Assist_Delay = 0;
-            }
-
-            if (L_o == 1) {
-                timer_l = timer_l + 1;
-                L_Assist_Delay = Trq_LH_Zero_Impedance;
-            } else if (L_o == 0) {
-                timer_l = 0;
-                L_Assist = Trq_LH_Zero_Impedance;
-            }
+            L_Assist_Delay = Trq_LH_Zero_Impedance;
         }
-        // Time based assist for left leg
-//        cout<<"control_algorithm_left: "<<control_algorithm_left<<endl;
+
         if (control_algorithm_left == "assist_as_needed") {
-            if (timer_r > timer_right) {
-                R_o = 0;
-            } else if (SUM_Vel_R >= 0.1 && SUM_Vel_L <= 0.0 && R_i == 0) {
-                R_o = 1;
-                R_i = 1;
-                L_i = 0;
+            if ((Theta_RH - Theta_LH) > delta_theta) {
+                if (abs(Velocity_LH) < epsilon && abs(Velocity_RH) < epsilon) {
+                    activate_assist = true;
+                }
             }
-
-            if (timer_l > timer_left) {
-                L_o = 0;
-            } else if (timer_delay >= delay_time && L_i == 0) {
-                L_o = 1;
-                R_i = 0;
-                L_i = 1;
-                timer_delay = 0;
+            if (activate_assist) {
+                timer_delay++;
+                if (timer_delay >= delay_time) {
+                    L_Assist_Delay = Assist_Delay;
+                    timer_l++;
+                }
+                if ((Theta_RH - Theta_LH) < -delta_theta || timer_l > timer_left) {
+                    L_Assist_Delay = 0;
+                    activate_assist = false;
+                    timer_l = 0;
+                    timer_delay = 0;
+                }
             }
-
-            if (R_i == 1) {
-                timer_delay = timer_delay + 1;
-            }
-
-            if (R_o == 1) {
-                timer_r = timer_r + 1;
-                R_Assist_Delay = Trq_RH_Zero_Impedance;
-            } else if (R_o == 0) {
-                timer_r = 0;
-                R_Assist_Delay = Trq_RH_Zero_Impedance;
-            }
-
-            if (L_o == 1) {
-                timer_l = timer_l + 1;
-                L_Assist_Delay = Assist_Delay;
-            } else if (L_o == 0) {
-                timer_l = 0;
-                L_Assist_Delay = 0;
-            }
+            R_Assist_Delay = Trq_RH_Zero_Impedance;
         }
     }
-
     // Send TO Derive
 
     // Right Left Control
@@ -1027,7 +994,6 @@ void control() {
     }
     if (control_algorithm == "time_based_assist") {
         Currentright = int(R_Assist_Delay);
-//        cout << "R Assist: " << Currentright << endl;
     }
 
     // Left Leg Control
@@ -1040,7 +1006,6 @@ void control() {
 
     if (control_algorithm == "time_based_assist") {
         Currentleft = int(L_Assist_Delay);
-//        cout<<"Timer : "<<timer_delay<<endl;
     }
 
 
@@ -1060,19 +1025,18 @@ void control() {
     // #desiredCurrentRight.publish(int(500))
     // #desiredCurrentLeft.publish(int(500))
     // # if((loopCounter % 1 == 0):
-    // #     print("time:" + str(time.time()) + "\tForce_LH:" + str(Force_LH) + "\tForce_RH:" + str(Force_RH) +"\tCurrentleft:" + str(Currentleft) + "\tCurrentright:" + str(Currentright) + "\tCurrentActualValueright:" + str(CurrentActualValueright) + "\tCurrentActualValueleft" + str(CurrentActualValueleft) + "\tLoadcellLeftHip:" + str(LoadcellLeftHip) + "\tLoadcellRightHip:" + str(LoadcellRightHip) + "\tPositionActualValueleft:" + str(PositionActualValueleft)  + "\tPositionActualValueright:" + str(PositionActualValueright)) 
+    // #     print("time:" + str(time.time()) + "\tForce_LH:" + str(Force_LH) + "\tForce_RH:" + str(Force_RH) +"\tCurrentleft:" + str(Currentleft) + "\tCurrentright:" + str(Currentright) + "\tCurrentActualValueright:" + str(CurrentActualValueright) + "\tCurrentActualValueleft" + str(CurrentActualValueleft) + "\tLoadcellLeftHip:" + str(LoadcellLeftHip) + "\tLoadcellRightHip:" + str(LoadcellRightHip) + "\tPositionActualValueleft:" + str(PositionActualValueleft)  + "\tPositionActualValueright:" + str(PositionActualValueright))
     // loopCounter = loopCounter + 1
     // #print("time:" + str(time.time()) )
     //rate.sleep()
     //  if((loopCounter % 40)
     //  cout << "time:" << "str(time.time())" << "\tForce_LH:" << (Force_LH) << "\tForce_RH:" << (Force_RH) << "\tCurrentleft:" <<(Currentleft) << "\tCurrentright:" << (Currentright) << "\tCurrentActualValueright:" << (CurrentActualValueright) << "\tCurrentActualValueleft" << (CurrentActualValueleft) << "\tLoadcellLeftHip:" << (LoadcellLeftHip) << "\tLoadcellRightHip:" << (LoadcellRightHip) << "\tPositionActualValueleft:" << (PositionActualValueleft)  << "\tPositionActualValueright:" << (PositionActualValueright) << endl ;
     //cout << Force_LH << "\tForce_RH:" << (Force_RH) << "\n";
-// cout << LoadcellRightHip;
+    // cout << LoadcellRightHip;
 
     // duration<double, std::milli> time_take_to_this = high_resolution_clock::now() - lastTime;
     // double currentTime = time_take_to_this.count() ;
     // lastTime = high_resolution_clock::now();
     // cout << currentTime << "\n" ;
-
 
 }
