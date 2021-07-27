@@ -1,5 +1,4 @@
 #include <ros/package.h>
-
 #include <signal.h>
 #include <boost/filesystem.hpp>
 #include <chrono>
@@ -144,7 +143,7 @@ void initializeDevice(std::shared_ptr <kaco::Device> device,
     device->add_receive_pdo_mapping(0x180 + node_id, "position_actual_value",
                                     0);                                 // 32bit
 
-    device->add_receive_pdo_mapping(0x180 + node_id, "statusword", 4);  // 16bit  
+    device->add_receive_pdo_mapping(0x180 + node_id, "statusword", 4);  // 16bit
 
     device->add_receive_pdo_mapping(0x180 + node_id, "current_actual_value",
                                     6);                                 // 16bit
@@ -211,7 +210,7 @@ high_resolution_clock::time_point lastTime = high_resolution_clock::now();
 //   double currentTime = time_take_to_this.count() ;
 //   lastTime = high_resolution_clock::now();
 //   messageRecievedFromController = true;
-//   if((device_connected){    
+//   if((device_connected){
 //     cout << msg->data << "\t" << currentTime << "\n" ;
 //     device->set_entry("current_mode_setting_value", msg->data,
 //                             kaco::WriteAccessMethod::pdo);
@@ -273,9 +272,9 @@ int32_t Assist_Right = 2000;
 int32_t Assist_Left = 2000;
 int32_t delay_time = 0;
 int32_t Assist_Delay = 0;
-string control_algorithm = "Assist_as_Needed";
-string control_algorithm_right = "Assist_as_Needed";
-string control_algorithm_left = "Assist_as_Needed";
+string control_algorithm = "assist_as_needed";
+string control_algorithm_right = "zero_impedance";
+string control_algorithm_left = "zero_impedance";
 
 void getSensorData(const hexa_package::sensor::ConstPtr &msg) {
     //cout  << endl << msg->loadcell1 << endl;
@@ -291,9 +290,30 @@ void getSensorData(const hexa_package::sensor::ConstPtr &msg) {
 
 
 void getSettingData(const hexa_package::setting::ConstPtr &msg) {
-    std::cout << "GUI Settings" << endl << msg->right_assistive_force << endl << msg->left_assistive_force << endl;
-    P_RH = msg->right_assistive_force;
-    P_LH = msg->left_assistive_force;
+
+    control_algorithm = msg->assist_algorithm;
+    control_algorithm_right = msg->right_leg_algorithm;
+    control_algorithm_left = msg->left_leg_algorithm;
+    Assist_Right = msg->right_assistive_force * 30;
+    Assist_Left = msg->left_assistive_force * 30;
+    timer_right = msg->right_assistive_time;
+    timer_left = msg->left_assistive_time;
+
+    // In time based assist always one of the legs is zero impedance mode
+    if (control_algorithm == "time_based_assist") {
+        if (control_algorithm_left == "assist_as_needed") {
+            delay_time = msg->assist_delay_left;
+            Assist_Delay = msg->left_assistive_force * 30;
+        }
+        if (control_algorithm_right == "assist_as_needed") {
+            delay_time = msg->assist_delay_right;
+            Assist_Delay = msg->right_assistive_force * 30;
+        }
+    }
+    cout << "GUI Settings" << endl << msg->assist_algorithm << endl << msg->left_leg_algorithm << endl
+         << msg->right_leg_algorithm << endl << Assist_Right << endl << Assist_Left
+         << endl << timer_right << endl << timer_left << endl << delay_time << endl;
+
 }
 
 
@@ -396,7 +416,7 @@ int main(int argc, char *argv[]) {
     core.nmt.send_nmt_message(node_id_0, kaco::NMT::Command::reset_node);
     core.nmt.send_nmt_message(node_id_1, kaco::NMT::Command::reset_node);
     core.nmt.register_device_alive_callback([&](const uint8_t new_node_id) {
-        cout << "node found \n";
+//        cout << "node found \n";
         // Check if this is the node we are looking for.
         if (new_node_id == node_id_0) {
             // lock
@@ -610,13 +630,12 @@ int main(int argc, char *argv[]) {
 
 
 
-                // hexa_package::drivesFeedBack  drivesFeedBack;
-                // drivesFeedBack.actualPosition0 = actual_position_0;
-                // drivesFeedBack.actualPosition1 = actual_position_1;
-                // drivesFeedBack.actualCurrent0 = actual_curr_0;
-                // drivesFeedBack.actualCurrent1 = actual_curr_1;
-
-                // drivesFeedBack_publisher.publish(drivesFeedBack);
+                hexa_package::drivesFeedBack drivesFeedBack;
+                drivesFeedBack.actualPosition0 = actual_position_0;
+                drivesFeedBack.actualPosition1 = actual_position_1;
+                drivesFeedBack.loadcell0 = Force_LH;
+                drivesFeedBack.loadcell1 = Force_RH;
+                drivesFeedBack_publisher.publish(drivesFeedBack);
 
 
                 control();
@@ -659,7 +678,7 @@ int main(int argc, char *argv[]) {
 void control() {
 
 
-    static long double a_filter = 0.1;
+    static long double a_filter = 0.01;
     static long double pi = 3.14;
     static long double D_Time;
     static long double D_time = D_Time = 0.005;
@@ -756,8 +775,8 @@ void control() {
     static long double Theta_dt_LH = 0;
 
 
-    Force_RH = 0.07 * (-0.023306 * (LoadcellRightHip) + 458.15 - 6.0) - 7.75;
-    Force_LH = 0.07 * (-0.023359 * (LoadcellLeftHip) + 756.79 - 6.0);
+    Force_RH = 0.07 * (-0.023306 * (LoadcellRightHip) + 458.15 - 6.0) - 12.75;
+    Force_LH = 0.07 * (-0.023359 * (LoadcellLeftHip) + 756.79 - 6.0) - 1;
 
     Moving_Average_RH[1] = Moving_Average_RH[2];
     Moving_Average_RH[2] = Moving_Average_RH[3];
@@ -820,7 +839,7 @@ void control() {
     Flt_Acc_RH_old = Flt_Acc_RH;
     Flt_Acc_LH_old = Flt_Acc_LH;
 
-// Moving Average	
+// Moving Average
     SUM_Vel_R = (Moving_Average_RH[1] + Moving_Average_RH[2] + Moving_Average_RH[3] + Moving_Average_RH[4] +
                  Moving_Average_RH[5] + Moving_Average_RH[6] + Moving_Average_RH[7] + Moving_Average_RH[8]) / 8;
     SUM_Vel_L = (Moving_Average_LH[1] + Moving_Average_LH[2] + Moving_Average_LH[3] + Moving_Average_LH[4] +
@@ -837,7 +856,7 @@ void control() {
         SIGN_Theta_dt_RH = -1;
     } else if (Force_RH < 0) {
         SIGN_Theta_dt_RH = +1;
-    }else{
+    } else {
         SIGN_Theta_dt_RH = 0;
     }
 
@@ -845,7 +864,7 @@ void control() {
         SIGN_Theta_dt_LH = -1;
     } else if (Force_LH < 0) {
         SIGN_Theta_dt_LH = +1;
-    }else{
+    } else {
         SIGN_Theta_dt_LH = 0;
     }
 
@@ -874,16 +893,16 @@ void control() {
     //Zero Impedance
     Trq_RH_Zero_Impedance =
             -(I_R * ACC_RH + C_R * Theta_dt_RH + FK_R * SIGN_Theta_dt_RH + MgL_R * sin(Theta_RH) +
-             PID_Gain_R * PD_RH) / 0.0369;
+              PID_Gain_R * PD_RH) / 0.0369;
     Trq_LH_Zero_Impedance =
             (I_L * ACC_LH + C_L * Theta_dt_LH + FK_L * SIGN_Theta_dt_LH + MgL_L * sin(Theta_LH) +
              PID_Gain_L * PD_LH) / 0.0369;
 
     // Assist as Needed
-    if (control_algorithm == "Assist_as_Needed") {
+    if (control_algorithm == "assist_as_needed") {
         if (timer_r > timer_right) {
             R_o = 0;
-        } else if (SUM_Vel_R >= 0.1 && SUM_Vel_L <= 0.0 && R_i == 0) {
+        } else if (Velocity_RH > 0.2 && Velocity_LH <= 0.0 && R_i == 0) {
             R_o = 1;
             R_i = 1;
             L_i = 0;
@@ -891,7 +910,7 @@ void control() {
 
         if (timer_l > timer_left) {
             L_o = 0;
-        } else if (SUM_Vel_L >= 0.1 && SUM_Vel_R <= 0.0 && L_i == 0) {
+        } else if (Velocity_LH > 0.2 && Velocity_RH <= 0.0 && L_i == 0) {
             L_o = 1;
             R_i = 0;
             L_i = 1;
@@ -899,7 +918,6 @@ void control() {
 
         if (R_o == 1) {
             timer_r = timer_r + 1;
-            // Send this to drive if( mode is Assist as needed
             R_Assist = -Assist_Right; // this value came from GUI;
         } else if (R_o == 0) {
             timer_r = 0;
@@ -915,9 +933,9 @@ void control() {
         }
     }
 
-    if (control_algorithm == "Time_Based_Assist") {
+    if (control_algorithm == "time_based_assist") {
         // Time based assist for right leg
-        if (control_algorithm_right == "Time_Based_Assist") {
+        if (control_algorithm_right == "assist_as_needed") {
             if (timer_r > timer_right) {
                 R_o = 0;
             } else if (timer_delay >= delay_time && R_i == 0) {
@@ -934,6 +952,7 @@ void control() {
                 R_i = 0;
                 L_i = 1;
             }
+
 
             if (L_i == 1) {
                 timer_delay = timer_delay + 1;
@@ -956,10 +975,11 @@ void control() {
             }
         }
         // Time based assist for left leg
-        if (control_algorithm_left == "Time_Based_Assist") {
+//        cout<<"control_algorithm_left: "<<control_algorithm_left<<endl;
+        if (control_algorithm_left == "assist_as_needed") {
             if (timer_r > timer_right) {
                 R_o = 0;
-            } else if (SUM_Vel_L >= 0.1 && SUM_Vel_R <= 0.0 && R_i == 0) {
+            } else if (SUM_Vel_R >= 0.1 && SUM_Vel_L <= 0.0 && R_i == 0) {
                 R_o = 1;
                 R_i = 1;
                 L_i = 0;
@@ -974,7 +994,7 @@ void control() {
                 timer_delay = 0;
             }
 
-            if (L_i == 1) {
+            if (R_i == 1) {
                 timer_delay = timer_delay + 1;
             }
 
@@ -999,31 +1019,30 @@ void control() {
     // Send TO Derive
 
     // Right Left Control
-    if (control_algorithm_right == "Zero_Impedance") {
-;
+    if (control_algorithm_right == "zero_impedance") {
         Currentright = int(Trq_RH_Zero_Impedance);
     }
-    if (control_algorithm_right == "Assist_as_Needed") {
-
+    if (control_algorithm_right == "assist_as_needed") {
         Currentright = int(R_Assist);
     }
-    if (control_algorithm_right == "Time_Based_Assist") {
+    if (control_algorithm == "time_based_assist") {
         Currentright = int(R_Assist_Delay);
+//        cout << "R Assist: " << Currentright << endl;
     }
 
     // Left Leg Control
-    if (control_algorithm_left == "Zero_Impedance") {
-
+    if (control_algorithm_left == "zero_impedance") {
         Currentleft = int(Trq_LH_Zero_Impedance);
     }
-    if (control_algorithm_left == "Assist_as_Needed") {
-
+    if (control_algorithm_left == "assist_as_needed") {
         Currentleft = int(L_Assist);
     }
 
-    if (control_algorithm == "Time_Based_Assist") {
+    if (control_algorithm == "time_based_assist") {
         Currentleft = int(L_Assist_Delay);
+//        cout<<"Timer : "<<timer_delay<<endl;
     }
+
 
     static int loopCounter;
     loopCounter++;
@@ -1047,7 +1066,7 @@ void control() {
     //rate.sleep()
     //  if((loopCounter % 40)
     //  cout << "time:" << "str(time.time())" << "\tForce_LH:" << (Force_LH) << "\tForce_RH:" << (Force_RH) << "\tCurrentleft:" <<(Currentleft) << "\tCurrentright:" << (Currentright) << "\tCurrentActualValueright:" << (CurrentActualValueright) << "\tCurrentActualValueleft" << (CurrentActualValueleft) << "\tLoadcellLeftHip:" << (LoadcellLeftHip) << "\tLoadcellRightHip:" << (LoadcellRightHip) << "\tPositionActualValueleft:" << (PositionActualValueleft)  << "\tPositionActualValueright:" << (PositionActualValueright) << endl ;
-    //  cout << Force_LH << "\tForce_RH:" << (Force_RH) << "\n";
+    //cout << Force_LH << "\tForce_RH:" << (Force_RH) << "\n";
 // cout << LoadcellRightHip;
 
     // duration<double, std::milli> time_take_to_this = high_resolution_clock::now() - lastTime;
