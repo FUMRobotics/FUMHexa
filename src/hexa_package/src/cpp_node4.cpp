@@ -716,7 +716,7 @@ void control() {
     static long double C_L = 1.5;
     static long double FK_L = 1.5;
     static long double MgL_L = 0.5;
-    static long double PID_Gain_L = 0.15;
+    static long double PID_Gain_L = 0.5;
     static long double N_LH = 100;
 
     //# initial value
