@@ -116,6 +116,9 @@ async def pinger(websocket, path):
         'right_assistive_time': 0,
         'assist_delay_left': 0,
         'assist_delay_right': 0,
+        'delta_theta_start': 0,
+        'delta_theta_end': 0,
+        'epsilon': 0
     }
     while True:
         try:
