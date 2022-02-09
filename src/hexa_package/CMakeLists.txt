@@ -55,6 +55,7 @@ add_message_files(
    drivesFeedBack.msg
    drivesAction.msg
    sensor.msg
+   controlParameters.msg
 #   Message1.msg
 #   Message2.msg
 )

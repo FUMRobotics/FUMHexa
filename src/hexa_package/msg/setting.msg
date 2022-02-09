@@ -1,6 +1,13 @@
+string assist_algorithm
 string left_leg_algorithm
 string right_leg_algorithm
 int32 left_assistive_force
 int32 right_assistive_force
 int32 left_assistive_time
 int32 right_assistive_time
+int32 assist_delay_left
+int32 assist_delay_right
+float64 delta_theta_start
+float64 delta_theta_end
+float64 epsilon
+bool manual_assist

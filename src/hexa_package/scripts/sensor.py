@@ -11,8 +11,10 @@ import time
 import os
 
 if __name__ == '__main__':
+    param = os.sched_param(os.sched_get_priority_max(os.SCHED_FIFO))
+    os.sched_setscheduler(0, os.SCHED_FIFO, param)
     rospy.init_node('sensor', anonymous=True)
-    pub1 = rospy.Publisher('sensor', sensor, queue_size=100)
+    pub1 = rospy.Publisher('sensor', sensor, queue_size=2)
     #lastMassageSentToRos = 0
     bus = can.Bus(interface='socketcan',channel='can0',receive_own_messages=False)
     can_filters = [ {"can_id" : 292, "can_mask" : 0xF, "extended" :False},
